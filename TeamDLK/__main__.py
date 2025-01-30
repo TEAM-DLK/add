@@ -15,7 +15,7 @@ import telegram
 # Configuration
 BOT_USERNAME = "@LisaVipRoBot"  # Replace with your bot's username
 OWNER_ID = 5917900136               # Replace with your owner ID
-TOKEN = "7952572583:AAFenHPWINA136S17Nd-O0EYMynuQkRKkGk"  # Your bot token
+TOKEN = "7952572583:-O0EYMynuQkRKkGk"  # Your bot token
 
 # Setup logging
 logging.basicConfig(
