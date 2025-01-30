@@ -91,13 +91,15 @@ async def free_user(update: Update, context: CallbackContext):
         await update.message.reply_text("❌ Only admins can use this command.")
         return
 
-    # Check for mentioned user
-    if not context.args:
-        await update.message.reply_text("ℹ️ Usage: /free @username")
+    # Check for mentioned users using Telegram's mention entity
+    if not update.message.entities or not any(e.type == "mention" for e in update.message.entities):
+        await update.message.reply_text("ℹ️ Usage: Reply to a user or use /free @username")
         return
 
-    username = context.args[0].lstrip('@')
     try:
+        # Get first mentioned user
+        mention = next(e for e in update.message.entities if e.type == "mention")
+        username = update.message.text[mention.offset+1:mention.offset+mention.length]
         user = await context.bot.get_chat(username)
         whitelist.add(user.id)
         await update.message.reply_text(f"✅ User @{username} is now whitelisted.")
