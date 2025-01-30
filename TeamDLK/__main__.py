@@ -18,7 +18,7 @@ restricted_users = {}
 ADMINS = [5917900136]  # Replace with actual admin user IDs
 
 async def start(update: Update, context: CallbackContext) -> None:
-    await update.message.reply_text('Welcome to the group! To send messages, please add 3 new members.')
+    await update.message.reply_text('Hi, I'm Group Booster VIP, to use me I have to be added to your group. please add 3 new members.')
 
 async def track_new_members(update: Update, context: CallbackContext) -> None:
     for new_member in update.message.new_chat_members:
@@ -79,7 +79,7 @@ async def check_status(update: Update, context: CallbackContext) -> None:
 
 def main() -> None:
     # Replace 'YOUR_TOKEN' with your bot's token
-    application = Application.builder().token("7952572583:AAGnjCaw4yGAxnZzNaBZo715uYIFkbNdkCA").build()
+    application = Application.builder().token("7952572583:AAEGu0QYuQ-0umRn3Ade4VnFnVzsd3kbKo4").build()
 
     # Handlers
     application.add_handler(CommandHandler("start", start))
