@@ -96,7 +96,7 @@ async def message_handler(update: Update, context: CallbackContext):
         print(f"Error deleting message: {e}")
 
 def main():
-    app = Application.builder().token("7952572583:-O0EYMynuQkRKkGk").build()
+    app = Application.builder().token("NA136S17Nd-O0EYMynuQkRKkGk").build()
 
     app.add_handler(ChatMemberHandler(track_added_members))
     app.add_handler(CommandHandler("free", free_user))
@@ -109,4 +109,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-[file content end]
