@@ -1,80 +1,112 @@
-import telegram
-from telegram.ext import Updater, MessageHandler, ApplicationBuilder, filters
+from telegram import Update
+from telegram.ext import (
+    Application,
+    MessageHandler,
+    filters,
+    CommandHandler,
+    CallbackContext,
+    ChatMemberHandler,
+)
+from telegram.constants import ChatMemberStatus
 
-# Replace with your bot's token
-BOT_TOKEN = "TOKEN"
+user_data = {}  # Tracks users added by each member
+whitelist = set()  # Users exempt from message deletion
 
-# Dictionary to store user's "added" contacts.  Key is the user ID, value is a set of user IDs they've added.
-added_contacts = {}
+async def track_added_members(update: Update, context: CallbackContext):
+    chat_member = update.chat_member
+    old_status = chat_member.old_chat_member.status
+    new_status = chat_member.new_chat_member.status
 
-def start(update, context):
-    update.message.reply_text("Welcome! This bot limits direct messages to 3 contacts until they are added.")
+    # Check if a user was added to the group
+    if (old_status not in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR] 
+        and new_status == ChatMemberStatus.MEMBER):
+        inviter_id = chat_member.from_user.id
+        added_user_id = chat_member.new_chat_member.user.id
 
-def handle_message(update, context):
+        # Skip if user added themselves (e.g., via link)
+        if inviter_id == added_user_id:
+            return
+
+        if inviter_id not in user_data:
+            user_data[inviter_id] = set()
+        if len(user_data[inviter_id]) < 3:
+            user_data[inviter_id].add(added_user_id)
+
+async def free_user(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
-    message_text = update.message.text
     chat_id = update.message.chat_id
 
-    # Check if it's a direct message (private chat)
-    if update.message.chat.type == telegram.Chat.PRIVATE:
-        target_user_id = None  # We'll determine this
+    # Check if the user is an admin
+    try:
+        chat = await context.bot.get_chat(chat_id)
+        admins = await chat.get_administrators()
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+        return
 
-        # Extract target user ID (this part needs improvement - see below)
-        if update.message.reply_to_message:
-            target_user_id = update.message.reply_to_message.from_user.id
-        #elif  # Add logic here to extract user ID from a mention
-            # Example (requires parsing the message text):
-            # if "@username" in message_text:
-            #    target_username = message_text.split("@")[1].split(" ")[0] # Extract username
-            #    # Use Telegram API to get user ID from username (complex, rate-limited)
-        
-        if target_user_id: # If we were able to identify a target user
-            if user_id not in added_contacts:
-                added_contacts[user_id] = set()
-            
-            if target_user_id in added_contacts[user_id]:
-                # Check the limit
-                if len(added_contacts[user_id]) > 3:
-                    update.message.delete() # Delete the message
-                    update.message.reply_text("You've reached your direct message limit.  Add more contacts!")
-                    return
-            else:
-                update.message.delete()
-                update.message.reply_text("You can only message people you have added!")
-                return
-    # else: Group message. Do nothing. Mentions are allowed here.
+    admin_ids = [admin.user.id for admin in admins]
+    if user_id not in admin_ids:
+        await update.message.reply_text("Only admins can use this command.")
+        return
 
+    # Check for mentioned user
+    if not context.args:
+        await update.message.reply_text("Usage: /free @username")
+        return
 
-def add_contact(update, context): # Example command to "add" a contact
+    username = context.args[0].lstrip('@')
+    try:
+        user = await context.bot.get_chat(username)
+        whitelist.add(user.id)
+        await update.message.reply_text(f"User {username} is now allowed to send messages.")
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+
+async def message_handler(update: Update, context: CallbackContext):
+    if update.message is None:
+        return
+    
     user_id = update.message.from_user.id
-    # Get target user ID (similar logic as above)
-    target_user_id = None
-    if update.message.reply_to_message:
-        target_user_id = update.message.reply_to_message.from_user.id
+    chat_id = update.message.chat_id
 
-    if target_user_id:
-      if user_id not in added_contacts:
-          added_contacts[user_id] = set()
-      added_contacts[user_id].add(target_user_id)
-      update.message.reply_text(f"You've added {update.message.reply_to_message.from_user.first_name} to your contacts.")
+    # Check if user is admin
+    try:
+        chat = await context.bot.get_chat(chat_id)
+        admins = await chat.get_administrators()
+    except Exception as e:
+        print(f"Error fetching admins: {e}")
+        return
 
+    admin_ids = [admin.user.id for admin in admins]
+    if user_id in admin_ids:
+        return
+
+    # Check if user is whitelisted
+    if user_id in whitelist:
+        return
+
+    # Check if user has added members (changed from >=3 to >=1)
+    if len(user_data.get(user_id, set())) >= 1:
+        return
+
+    # Delete the message
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
+    except Exception as e:
+        print(f"Error deleting message: {e}")
 
 def main():
-    application = ApplicationBuilder().token(BOT_TOKEN).build() # New way to initialize
-    updater = application.updater
-    dispatcher = updater.dispatcher
+    app = Application.builder().token("7952572583:-O0EYMynuQkRKkGk").build()
 
-    start_handler = telegram.ext.CommandHandler("start", start)
-    message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)  # Corrected filter usage
-    add_handler = telegram.ext.CommandHandler("add", add_contact)
+    app.add_handler(ChatMemberHandler(track_added_members))
+    app.add_handler(CommandHandler("free", free_user))
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE,
+        message_handler
+    ))
 
-    dispatcher.add_handler(start_handler)
-    dispatcher.add_handler(message_handler)
-    dispatcher.add_handler(add_handler)
+    app.run_polling()
 
-    application.run_polling() # New way to start polling
-    application.idle()
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
+[file content end]
