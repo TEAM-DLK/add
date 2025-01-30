@@ -1,94 +1,79 @@
-from telegram import Update, ChatPermissions
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackContext
-from telegram.ext import filters
+import telegram
+from telegram.ext import Updater, MessageHandler, Filters
 
-import logging
+# Replace with your bot's token
+BOT_TOKEN = "YOUR_BOT_TOKEN"
 
-# Enable logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Dictionary to store user's "added" contacts.  Key is the user ID, value is a set of user IDs they've added.
+added_contacts = {}
 
-# Dictionary to keep track of users and the number of members they have added
-user_member_counts = {}
+def start(update, context):
+    update.message.reply_text("Welcome! This bot limits direct messages to 3 contacts until they are added.")
 
-# Dictionary to keep track of users who have been restricted
-restricted_users = {}
-
-# Admin user IDs (you can add more admins as needed)
-ADMINS = [5917900136]  # Replace with actual admin user IDs
-
-async def start(update: Update, context: CallbackContext) -> None:
-    await update.message.reply_text('Hi I am Group Booster VIP to use me I have to be added to your group. please add 3 new members.')
-
-async def track_new_members(update: Update, context: CallbackContext) -> None:
-    for new_member in update.message.new_chat_members:
-        # Get the user who added the new member
-        added_by = update.message.from_user.id
-
-        # Increment the count of members added by this user
-        if added_by in user_member_counts:
-            user_member_counts[added_by] += 1
-        else:
-            user_member_counts[added_by] = 1
-
-        # Check if the user has added 3 members
-        if user_member_counts[added_by] >= 3 and added_by in restricted_users:
-            # Remove restrictions
-            await context.bot.restrict_chat_member(
-                chat_id=update.message.chat_id,
-                user_id=added_by,
-                permissions=ChatPermissions(
-                    can_send_messages=True,
-                    can_invite_users=True,
-                    can_send_media_messages=True,
-                    can_send_other_messages=True,
-                    can_add_web_page_previews=True
-                )
-            )
-            del restricted_users[added_by]
-            await update.message.reply_text(f'@{update.message.from_user.username} can now send messages!')
-
-async def enforce_restrictions(update: Update, context: CallbackContext) -> None:
+def handle_message(update, context):
     user_id = update.message.from_user.id
+    message_text = update.message.text
+    chat_id = update.message.chat_id
 
-    # Admins are exempt from restrictions
-    if user_id in ADMINS:
-        return
+    # Check if it's a direct message (private chat)
+    if update.message.chat.type == telegram.Chat.PRIVATE:
+        target_user_id = None  # We'll determine this
 
-    # Check if the user has added 3 members
-    if user_member_counts.get(user_id, 0) < 3:
-        # Restrict the user from sending messages
-        await context.bot.restrict_chat_member(
-            chat_id=update.message.chat_id,
-            user_id=user_id,
-            permissions=ChatPermissions(
-                can_send_messages=False,
-                can_invite_users=True,
-                can_send_media_messages=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False
-            )
-        )
-        restricted_users[user_id] = True
-        await update.message.reply_text('You need to add 3 new members to send messages.')
+        # Extract target user ID (this part needs improvement - see below)
+        if update.message.reply_to_message:
+            target_user_id = update.message.reply_to_message.from_user.id
+        #elif  # Add logic here to extract user ID from a mention
+            # Example (requires parsing the message text):
+            # if "@username" in message_text:
+            #    target_username = message_text.split("@")[1].split(" ")[0] # Extract username
+            #    # Use Telegram API to get user ID from username (complex, rate-limited)
+        
+        if target_user_id: # If we were able to identify a target user
+            if user_id not in added_contacts:
+                added_contacts[user_id] = set()
+            
+            if target_user_id in added_contacts[user_id]:
+                # Check the limit
+                if len(added_contacts[user_id]) > 3:
+                    update.message.delete() # Delete the message
+                    update.message.reply_text("You've reached your direct message limit.  Add more contacts!")
+                    return
+            else:
+                update.message.delete()
+                update.message.reply_text("You can only message people you have added!")
+                return
+    # else: Group message. Do nothing. Mentions are allowed here.
 
-async def check_status(update: Update, context: CallbackContext) -> None:
+
+def add_contact(update, context): # Example command to "add" a contact
     user_id = update.message.from_user.id
-    count = user_member_counts.get(user_id, 0)
-    await update.message.reply_text(f'You have added {count} members. You need to add {3 - count} more to send messages.')
+    # Get target user ID (similar logic as above)
+    target_user_id = None
+    if update.message.reply_to_message:
+        target_user_id = update.message.reply_to_message.from_user.id
 
-def main() -> None:
-    # Replace 'YOUR_TOKEN' with your bot's token
-    application = Application.builder().token("7952572583:AAEGu0QYuQ-0umRn3Ade4VnFnVzsd3kbKo4").build()
+    if target_user_id:
+      if user_id not in added_contacts:
+          added_contacts[user_id] = set()
+      added_contacts[user_id].add(target_user_id)
+      update.message.reply_text(f"You've added {update.message.reply_to_message.from_user.first_name} to your contacts.")
 
-    # Handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("status", check_status))
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, track_new_members))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, enforce_restrictions))
 
-    # Start the Bot
-    application.run_polling()
+def main():
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
+
+    start_handler = telegram.ext.CommandHandler("start", start)
+    message_handler = MessageHandler(Filters.text & (~Filters.command), handle_message) # All text messages that are not commands
+    add_handler = telegram.ext.CommandHandler("add", add_contact) # Example command to add a contact
+
+    dispatcher.add_handler(start_handler)
+    dispatcher.add_handler(message_handler)
+    dispatcher.add_handler(add_handler)
+
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == '__main__':
     main()
+
