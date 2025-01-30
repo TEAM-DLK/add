@@ -41,9 +41,7 @@ async def track_new_members(update: Update, context: CallbackContext) -> None:
                     can_send_messages=True,
                     can_send_media_messages=True,
                     can_send_other_messages=True,
-                    can_send_polls=True,
-                    can_invite_users=True
-                    
+                    can_add_web_page_previews=True
                 )
             )
             del restricted_users[added_by]
@@ -58,7 +56,7 @@ async def enforce_restrictions(update: Update, context: CallbackContext) -> None
 
     # Check if the user has added 3 members
     if user_member_counts.get(user_id, 0) < 3:
-        # Restrict the user from sending messages, stickers, GIFs, etc.
+        # Restrict the user from sending messages
         await context.bot.restrict_chat_member(
             chat_id=update.message.chat_id,
             user_id=user_id,
@@ -66,19 +64,11 @@ async def enforce_restrictions(update: Update, context: CallbackContext) -> None
                 can_send_messages=False,
                 can_send_media_messages=False,
                 can_send_other_messages=False,
-                can_send_polls=False,
-                can_invite_users=True  # Allow adding members
+                can_add_web_page_previews=False
             )
         )
         restricted_users[user_id] = True
-        logger.info(f"User {user_id} has been restricted from sending messages.")
-        
-        # Delete the message sent by the restricted user
-        await context.bot.delete_message(chat_id=update.message.chat_id, message_id=update.message.message_id)
-        logger.info(f"Message from user {user_id} has been deleted.")
-        
-        # Notify the user that their message was deleted
-        await context.bot.send_message(chat_id=update.message.chat_id, text=f"@{update.message.from_user.username}, your message was deleted because you haven't added 3 members to the group.")
+        await update.message.reply_text('You need to add 3 new members to send messages.')
 
 async def check_status(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
@@ -87,7 +77,7 @@ async def check_status(update: Update, context: CallbackContext) -> None:
 
 def main() -> None:
     # Replace 'YOUR_TOKEN' with your bot's token
-    application = Application.builder().token("7952572583:AAEGu0QYuQ-0umRn3Ade4VnFnVzsd3kbKo4").build()
+    application = Application.builder().token("7952572583:AAGnjCaw4yGAxnZzNaBZo715uYIFkbNdkCA").build()
 
     # Handlers
     application.add_handler(CommandHandler("start", start))
