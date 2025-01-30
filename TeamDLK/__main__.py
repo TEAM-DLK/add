@@ -9,22 +9,28 @@ from telegram.ext import (
 )
 from telegram.constants import ChatMemberStatus
 import logging
+import sys
+import telegram
 
 # Configuration
-BOT_USERNAME = "@LisaVipRoBot"  # Replace with your bot's username
-OWNER_ID = 5917900136  # Replace with your owner's user ID
-TOKEN = "7952572583:AAFenHPWINA136S17Nd-O0EYMynuQkRKkGk"  # Replace with your bot token
+BOT_USERNAME = "@YourBotUsername"  # Replace with your bot's username
+OWNER_ID = 123456789               # Replace with your owner ID
+TOKEN = "7952572583:AAFenHPWINA136S17Nd-O0EYMynuQkRKkGk"  # Your bot token
 
 # Setup logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler("bot.log"),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
 # Global variables
-user_data = {}  # Tracks users added by each member
-whitelist = set()  # Users exempt from message deletion
+user_data = {}
+whitelist = set()
 
 async def start(update: Update, context: CallbackContext):
     """Send welcome message with inline button to add bot to group"""
@@ -78,7 +84,7 @@ async def free_user(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     chat_id = update.message.chat_id
 
-    # Check if the user is an admin
+    # Admin check
     try:
         chat = await context.bot.get_chat(chat_id)
         admins = await chat.get_administrators()
@@ -91,13 +97,12 @@ async def free_user(update: Update, context: CallbackContext):
         await update.message.reply_text("❌ Only admins can use this command.")
         return
 
-    # Check for mentioned users using Telegram's mention entity
+    # Mention check
     if not update.message.entities or not any(e.type == "mention" for e in update.message.entities):
-        await update.message.reply_text("ℹ️ Usage: Reply to a user or use /free @username")
+        await update.message.reply_text("ℹ️ Usage: /free @username")
         return
 
     try:
-        # Get first mentioned user
         mention = next(e for e in update.message.entities if e.type == "mention")
         username = update.message.text[mention.offset+1:mention.offset+mention.length]
         user = await context.bot.get_chat(username)
@@ -110,9 +115,8 @@ async def track_added_members(update: Update, context: CallbackContext):
     try:
         chat_member = update.chat_member
         
-        # Check if old_chat_member exists
         if not chat_member.old_chat_member:
-            logger.warning("old_chat_member is None. Skipping update.")
+            logger.warning("Skipping update with missing old_chat_member")
             return
             
         old_status = chat_member.old_chat_member.status
@@ -132,7 +136,7 @@ async def track_added_members(update: Update, context: CallbackContext):
                 user_data[inviter_id].add(added_user_id)
                 
     except Exception as e:
-        logger.error(f"Error in track_added_members: {e}", exc_info=True)
+        logger.error(f"Track members error: {e}", exc_info=True)
 
 async def message_handler(update: Update, context: CallbackContext):
     if update.message is None:
@@ -141,53 +145,58 @@ async def message_handler(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     chat_id = update.message.chat_id
 
-    # Check if user is admin
     try:
         chat = await context.bot.get_chat(chat_id)
         admins = await chat.get_administrators()
     except Exception as e:
-        logger.error(f"Error fetching admins: {e}")
+        logger.error(f"Admin check error: {e}")
         return
 
     admin_ids = [admin.user.id for admin in admins]
-    if user_id in admin_ids:
+    if user_id in admin_ids or user_id in whitelist:
         return
 
-    # Check if user is whitelisted
-    if user_id in whitelist:
-        return
-
-    # Check if user has added members
     if len(user_data.get(user_id, set())) >= 1:
         return
 
-    # Delete the message
     try:
-        await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
+        await context.bot.delete_message(chat_id, update.message.message_id)
     except Exception as e:
-        logger.error(f"Error deleting message: {e}")
+        logger.error(f"Delete message failed: {e}")
 
 async def error_handler(update: Update, context: CallbackContext):
-    logger.error(msg="Exception while handling update:", exc_info=context.error)
+    logger.error("Exception: %s", context.error, exc_info=context.error)
 
 def main():
-    app = Application.builder().token(TOKEN).build()
+    try:
+        # Check for existing instances
+        app = Application.builder().token(TOKEN).build()
+        
+        # Clear any existing webhook configuration
+        app.bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Webhook cleared successfully")
 
-    # Add handlers
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("free", free_user))
-    app.add_handler(ChatMemberHandler(track_added_members))
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE,
-        message_handler
-    ))
-    
-    # Error handler
-    app.add_error_handler(error_handler)
+        # Register handlers
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(CommandHandler("help", help_command))
+        app.add_handler(CommandHandler("stats", stats))
+        app.add_handler(CommandHandler("free", free_user))
+        app.add_handler(ChatMemberHandler(track_added_members))
+        app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE,
+            message_handler
+        ))
+        app.add_error_handler(error_handler)
 
-    app.run_polling()
+        logger.info("Starting bot in polling mode...")
+        app.run_polling()
+
+    except telegram.error.Conflict:
+        logger.critical("Another bot instance is already running! Shutting down.")
+        sys.exit(1)
+    except Exception as e:
+        logger.critical(f"Failed to start bot: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
