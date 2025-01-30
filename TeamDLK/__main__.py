@@ -2,7 +2,7 @@ import telegram
 from telegram.ext import Updater, MessageHandler, ApplicationBuilder, filters
 
 # Replace with your bot's token
-BOT_TOKEN = "7952572583:AAEGu0QYuQ-0umRn3Ade4VnFnVzsd3kbKo4"
+BOT_TOKEN = "TOKEN"
 
 # Dictionary to store user's "added" contacts.  Key is the user ID, value is a set of user IDs they've added.
 added_contacts = {}
