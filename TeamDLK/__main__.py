@@ -12,7 +12,8 @@ import logging
 
 # Configuration
 BOT_USERNAME = "@LisaVipRoBot"  # Replace with your bot's username
-OWNER_ID = 5917900136 # Replace with your owner's user ID
+OWNER_ID = 5917900136  # Replace with your owner's user ID
+TOKEN = "7952572583:AAFenHPWINA136S17Nd-O0EYMynuQkRKkGk"  # Replace with your bot token
 
 # Setup logging
 logging.basicConfig(
@@ -21,8 +22,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-user_data = {}
-whitelist = set()
+# Global variables
+user_data = {}  # Tracks users added by each member
+whitelist = set()  # Users exempt from message deletion
 
 async def start(update: Update, context: CallbackContext):
     """Send welcome message with inline button to add bot to group"""
@@ -71,9 +73,42 @@ async def stats(update: Update, context: CallbackContext):
     )
     await update.message.reply_text(stats_text)
 
+async def free_user(update: Update, context: CallbackContext):
+    """Admin command: Whitelist a user"""
+    user_id = update.message.from_user.id
+    chat_id = update.message.chat_id
+
+    # Check if the user is an admin
+    try:
+        chat = await context.bot.get_chat(chat_id)
+        admins = await chat.get_administrators()
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+        return
+
+    admin_ids = [admin.user.id for admin in admins]
+    if user_id not in admin_ids:
+        await update.message.reply_text("❌ Only admins can use this command.")
+        return
+
+    # Check for mentioned user
+    if not context.args:
+        await update.message.reply_text("ℹ️ Usage: /free @username")
+        return
+
+    username = context.args[0].lstrip('@')
+    try:
+        user = await context.bot.get_chat(username)
+        whitelist.add(user.id)
+        await update.message.reply_text(f"✅ User @{username} is now whitelisted.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
 async def track_added_members(update: Update, context: CallbackContext):
     try:
         chat_member = update.chat_member
+        
+        # Check if old_chat_member exists
         if not chat_member.old_chat_member:
             logger.warning("old_chat_member is None. Skipping update.")
             return
@@ -97,23 +132,57 @@ async def track_added_members(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in track_added_members: {e}", exc_info=True)
 
+async def message_handler(update: Update, context: CallbackContext):
+    if update.message is None:
+        return
+    
+    user_id = update.message.from_user.id
+    chat_id = update.message.chat_id
+
+    # Check if user is admin
+    try:
+        chat = await context.bot.get_chat(chat_id)
+        admins = await chat.get_administrators()
+    except Exception as e:
+        logger.error(f"Error fetching admins: {e}")
+        return
+
+    admin_ids = [admin.user.id for admin in admins]
+    if user_id in admin_ids:
+        return
+
+    # Check if user is whitelisted
+    if user_id in whitelist:
+        return
+
+    # Check if user has added members
+    if len(user_data.get(user_id, set())) >= 1:
+        return
+
+    # Delete the message
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
+    except Exception as e:
+        logger.error(f"Error deleting message: {e}")
+
 async def error_handler(update: Update, context: CallbackContext):
     logger.error(msg="Exception while handling update:", exc_info=context.error)
 
 def main():
-    app = Application.builder().token("7952572583:AAFenHPWINA136S17Nd-O0EYMynuQkRKkGk").build()
+    app = Application.builder().token(TOKEN).build()
 
     # Add handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(ChatMemberHandler(track_added_members))
     app.add_handler(CommandHandler("free", free_user))
+    app.add_handler(ChatMemberHandler(track_added_members))
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE,
         message_handler
     ))
     
+    # Error handler
     app.add_error_handler(error_handler)
 
     app.run_polling()
