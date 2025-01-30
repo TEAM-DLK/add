@@ -1,5 +1,5 @@
 import telegram
-from telegram.ext import Updater, MessageHandler, Filters
+from telegram.ext import Updater, MessageHandler, ApplicationBuilder, filters
 
 # Replace with your bot's token
 BOT_TOKEN = "7952572583:AAEGu0QYuQ-0umRn3Ade4VnFnVzsd3kbKo4"
@@ -60,20 +60,21 @@ def add_contact(update, context): # Example command to "add" a contact
 
 
 def main():
-    updater = Updater(BOT_TOKEN, use_context=True)
+    application = ApplicationBuilder().token(BOT_TOKEN).build() # New way to initialize
+    updater = application.updater
     dispatcher = updater.dispatcher
 
     start_handler = telegram.ext.CommandHandler("start", start)
-    message_handler = MessageHandler(Filters.text & (~Filters.command), handle_message) # All text messages that are not commands
-    add_handler = telegram.ext.CommandHandler("add", add_contact) # Example command to add a contact
+    message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)  # Corrected filter usage
+    add_handler = telegram.ext.CommandHandler("add", add_contact)
 
     dispatcher.add_handler(start_handler)
     dispatcher.add_handler(message_handler)
     dispatcher.add_handler(add_handler)
 
-    updater.start_polling()
-    updater.idle()
+    application.run_polling() # New way to start polling
+    application.idle()
+
 
 if __name__ == '__main__':
     main()
-
