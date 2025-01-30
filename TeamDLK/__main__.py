@@ -87,7 +87,7 @@ async def check_status(update: Update, context: CallbackContext) -> None:
 
 def main() -> None:
     # Replace 'YOUR_TOKEN' with your bot's token
-    application = Application.builder().token("BOT-TOKEN").build()
+    application = Application.builder().token("7952572583:AAEGu0QYuQ-0umRn3Ade4VnFnVzsd3kbKo4").build()
 
     # Handlers
     application.add_handler(CommandHandler("start", start))
